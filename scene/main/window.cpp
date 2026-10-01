@@ -731,7 +731,12 @@ void Window::_make_window() {
 		window_rect = Rect2i(DisplayServer::get_singleton()->screen_get_position(DisplayServerEnums::SCREEN_WITH_KEYBOARD_FOCUS) + (DisplayServer::get_singleton()->screen_get_size(DisplayServerEnums::SCREEN_WITH_KEYBOARD_FOCUS) - size) / 2, size);
 	}
 
-	window_id = DisplayServer::get_singleton()->create_sub_window(DisplayServerEnums::WindowMode(mode), vsync_mode, f, window_rect, is_in_edited_scene_root() ? false : exclusive, transient_parent ? transient_parent->window_id : DisplayServerEnums::INVALID_WINDOW_ID);
+	if (_is_backed_by_native_surface()) {
+		window_id = DisplayServer::get_singleton()->create_native_window(native_surface, DisplayServerEnums::WindowMode(mode), f);
+	} else {
+		window_id = DisplayServer::get_singleton()->create_sub_window(DisplayServerEnums::WindowMode(mode), vsync_mode, f, window_rect, is_in_edited_scene_root() ? false : exclusive, transient_parent ? transient_parent->window_id : DisplayServerEnums::INVALID_WINDOW_ID);
+	}
+
 	ERR_FAIL_COND(window_id == DisplayServerEnums::INVALID_WINDOW_ID);
 	DisplayServer::get_singleton()->window_set_max_size(Size2i(), window_id);
 	DisplayServer::get_singleton()->window_set_min_size(Size2i(), window_id);
@@ -1117,6 +1122,33 @@ void Window::_clear_transient() {
 	}
 }
 
+bool Window::_is_backed_by_native_surface() const {
+	return native_surface.is_valid();
+}
+
+void Window::set_native_surface(const Ref<RenderingNativeSurface> &p_native_surface) {
+	ERR_MAIN_THREAD_GUARD;
+	ERR_FAIL_COND_MSG(window_id == DisplayServerEnums::MAIN_WINDOW_ID, "The main window's surface is set with DisplayServerLibrary.set_native_surface() before the engine starts.");
+	if (native_surface == p_native_surface) {
+		return;
+	}
+
+	bool was_visible = is_visible();
+	if (was_visible) {
+		set_visible(false);
+	}
+
+	native_surface = p_native_surface;
+
+	if (was_visible) {
+		set_visible(true);
+	}
+}
+
+Ref<RenderingNativeSurface> Window::get_native_surface() const {
+	return native_surface;
+}
+
 void Window::_make_transient() {
 	if (!get_parent()) {
 		//main window, can't be transient
@@ -1485,6 +1517,10 @@ bool Window::get_force_native() const {
 Viewport *Window::get_embedder() const {
 	ERR_READ_THREAD_GUARD_V(nullptr);
 	if (force_native && DisplayServer::get_singleton()->has_feature(DisplayServerEnums::FEATURE_SUBWINDOWS) && !is_in_edited_scene_root()) {
+		return nullptr;
+	}
+
+	if (_is_backed_by_native_surface()) {
 		return nullptr;
 	}
 
@@ -3430,6 +3466,9 @@ void Window::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("set_visible", "visible"), &Window::set_visible);
 	ClassDB::bind_method(D_METHOD("is_visible"), &Window::is_visible);
+
+	ClassDB::bind_method(D_METHOD("set_native_surface", "native_surface"), &Window::set_native_surface);
+	ClassDB::bind_method(D_METHOD("get_native_surface"), &Window::get_native_surface);
 
 	ClassDB::bind_method(D_METHOD("hide"), &Window::hide);
 	ClassDB::bind_method(D_METHOD("show"), &Window::show);

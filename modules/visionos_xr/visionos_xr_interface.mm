@@ -163,8 +163,7 @@ bool VisionOSXRInterface::initialize() {
 		rendering_server->call_on_render_thread(callable_mp(&rt, &RenderThread::initialize));
 		rendering_server->call_on_render_thread(callable_mp(&rt, &RenderThread::set_world_tracking_provider).bind((uint64_t)(__bridge void *)cs.world_tracking_provider));
 
-		float minimum_supported_near_plane = cp_layer_renderer_capabilities_supported_minimum_near_plane_distance(cs.layer_renderer_capabilities);
-		rendering_server->call_on_render_thread(callable_mp(&rt, &RenderThread::set_minimum_supported_near_plane).bind(minimum_supported_near_plane));
+		_adopt_app_delegate_layer_renderer();
 
 		rendering_server->call_on_render_thread(callable_mp(&rt, &RenderThread::prepare_screen));
 
@@ -200,12 +199,6 @@ bool VisionOSXRInterface::initialize() {
 bool VisionOSXRInterface::CompositorServicesData::initialize(XRServer *p_xr_server) {
 	String driver_name = OS::get_singleton()->get_current_rendering_driver_name().to_lower();
 	ERR_FAIL_COND_V_MSG(driver_name != "metal", false, "The visionOS XR interface requires the Metal rendering driver.");
-
-	layer_renderer = GDTAppDelegateServiceVisionOS.layerRenderer;
-	layer_renderer_capabilities = GDTAppDelegateServiceVisionOS.layerRendererCapabilities;
-
-	ERR_FAIL_NULL_V_MSG(layer_renderer, false, "GDTAppDelegateServiceVisionOS.layerRenderer not set.");
-	ERR_FAIL_NULL_V_MSG(layer_renderer_capabilities, false, "GDTAppDelegateServiceVisionOS.layerRendererCapabilities not set.");
 
 	ar_world_tracking_configuration_t world_tracking_configuration = ar_world_tracking_configuration_create();
 	world_tracking_provider = ar_world_tracking_provider_create(world_tracking_configuration);
@@ -295,15 +288,60 @@ void VisionOSXRInterface::RenderThread::uninitialize() {
 	if (current_rasterization_rate_map_id != RID()) {
 		rendering_device->free_rid(current_rasterization_rate_map_id);
 	}
+	if (standalone_present_queue != nullptr) {
+		CFBridgingRelease(standalone_present_queue);
+		standalone_present_queue = nullptr;
+	}
 	initialized = false;
 }
 
-void VisionOSXRInterface::update_layer_renderer(cp_layer_renderer_t p_layer_renderer, cp_layer_renderer_capabilities_t p_layer_renderer_capabilities) {
-	cs.layer_renderer = p_layer_renderer;
-	cs.layer_renderer_capabilities = p_layer_renderer_capabilities;
+void VisionOSXRInterface::_adopt_app_delegate_layer_renderer() {
+	cp_layer_renderer_t layer_renderer = GDTAppDelegateServiceVisionOS.layerRenderer;
+	cp_layer_renderer_capabilities_t capabilities = GDTAppDelegateServiceVisionOS.layerRendererCapabilities;
+	if (layer_renderer == nullptr || capabilities == nullptr) {
+		return;
+	}
+	update_layer_renderer(layer_renderer, cp_layer_renderer_capabilities_supported_minimum_near_plane_distance(capabilities));
+}
 
-	float minimum_supported_near_plane = cp_layer_renderer_capabilities_supported_minimum_near_plane_distance(cs.layer_renderer_capabilities);
-	rendering_server->call_on_render_thread(callable_mp(&rt, &RenderThread::set_minimum_supported_near_plane).bind(minimum_supported_near_plane));
+void VisionOSXRInterface::update_layer_renderer(cp_layer_renderer_t p_layer_renderer, float p_minimum_supported_near_plane) {
+	cs.layer_renderer = p_layer_renderer;
+	RenderingServer *rendering_server_singleton = RenderingServer::get_singleton();
+	rendering_server_singleton->call_on_render_thread(callable_mp(&rt, &RenderThread::discard_previous_session_frame));
+	rendering_server_singleton->call_on_render_thread(callable_mp(&rt, &RenderThread::set_minimum_supported_near_plane).bind(p_minimum_supported_near_plane));
+	if (initialized && _is_world_tracking_stopped()) {
+		_restart_world_tracking();
+	}
+}
+
+bool VisionOSXRInterface::_is_world_tracking_stopped() const {
+	if (cs.world_tracking_provider == nullptr) {
+		return false;
+	}
+	return ar_data_provider_get_state((ar_data_provider_t)cs.world_tracking_provider) == ar_data_provider_state_stopped;
+}
+
+void VisionOSXRInterface::_restart_world_tracking() {
+	print_verbose("VisionOSXRInterface: world tracking was stopped with the previous immersive space; starting a new provider.");
+	ar_session_stop(ar_session);
+	ar_world_tracking_configuration_t world_tracking_configuration = ar_world_tracking_configuration_create();
+	cs.world_tracking_provider = ar_world_tracking_provider_create(world_tracking_configuration);
+	rendering_server->call_on_render_thread(callable_mp(&rt, &RenderThread::set_world_tracking_provider).bind((uint64_t)(__bridge void *)cs.world_tracking_provider));
+	run_ar_session();
+}
+
+void VisionOSXRInterface::release_layer_renderer(cp_layer_renderer_t p_layer_renderer) {
+	if (cs.layer_renderer == p_layer_renderer) {
+		cs.layer_renderer = nullptr;
+	}
+}
+
+bool VisionOSXRInterface::is_world_tracking_starting() const {
+	if (!initialized || cs.world_tracking_provider == nullptr) {
+		return false;
+	}
+	ar_data_provider_t world_tracking_provider = (ar_data_provider_t)cs.world_tracking_provider;
+	return ar_data_provider_get_state(world_tracking_provider) == ar_data_provider_state_initialized;
 }
 
 Dictionary VisionOSXRInterface::get_system_info() {
@@ -852,6 +890,21 @@ void VisionOSXRInterface::RenderThread::encode_drawable_no_op_and_present(cp_dra
 	cp_drawable_encode_present(p_drawable, command_buffer);
 }
 
+static id<MTLCommandQueue> standalone_present_queue_for(void *&r_queue_storage, cp_drawable_t p_drawable) {
+	if (r_queue_storage == nullptr) {
+		id<MTLDevice> device = cp_drawable_get_color_texture(p_drawable, 0).device;
+		r_queue_storage = (void *)CFBridgingRetain([device newCommandQueue]);
+	}
+	return (__bridge id<MTLCommandQueue>)r_queue_storage;
+}
+
+void VisionOSXRInterface::RenderThread::_present_on_standalone_command_buffer() {
+	id<MTLCommandBuffer> command_buffer = [standalone_present_queue_for(standalone_present_queue, current_drawable) commandBuffer];
+	encode_drawable_no_op_and_present(current_drawable, current_frame, (__bridge void *)command_buffer);
+	[command_buffer commit];
+	current_drawable = nullptr;
+}
+
 void VisionOSXRInterface::RenderThread::encode_present(MTL3::MDCommandBuffer *p_cmd_buffer) {
 	ERR_NOT_ON_RENDER_THREAD;
 
@@ -860,7 +913,13 @@ void VisionOSXRInterface::RenderThread::encode_present(MTL3::MDCommandBuffer *p_
 	}
 
 	ERR_FAIL_NULL_MSG(current_drawable, "Current drawable is nil, process() has probably not been called.");
-	encode_drawable_no_op_and_present(current_drawable, current_frame, p_cmd_buffer->get_command_buffer());
+	void *engine_command_buffer = p_cmd_buffer ? (void *)p_cmd_buffer->get_command_buffer() : nullptr;
+	if (engine_command_buffer == nullptr) {
+		WARN_PRINT_ONCE("The engine had no command buffer to present with; presenting on a standalone command buffer.");
+		_present_on_standalone_command_buffer();
+		return;
+	}
+	encode_drawable_no_op_and_present(current_drawable, current_frame, engine_command_buffer);
 	current_drawable = nullptr;
 }
 
@@ -872,8 +931,18 @@ void VisionOSXRInterface::RenderThread::end_frame() {
 	}
 
 	ERR_FAIL_NULL_MSG(current_frame, "Current frame is nil, process() has probably not been called.");
+	if (current_drawable != nullptr) {
+		WARN_PRINT_ONCE("The frame ended without presenting its drawable; presenting it before ending submission.");
+		_present_on_standalone_command_buffer();
+	}
 	cp_frame_end_submission(current_frame);
 	current_frame = nullptr;
+}
+
+void VisionOSXRInterface::RenderThread::discard_previous_session_frame() {
+	ERR_NOT_ON_RENDER_THREAD;
+	current_frame = nullptr;
+	current_drawable = nullptr;
 }
 
 RID VisionOSXRInterface::RenderThread::get_color_texture() {

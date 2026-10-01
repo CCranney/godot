@@ -30,32 +30,40 @@
 
 #import "godot_compositor_services_renderer.h"
 
-#import "drivers/apple_embedded/os_apple_embedded.h"
-
 #include "modules/modules_enabled.gen.h"
 #if defined(MODULE_VISIONOS_XR_ENABLED)
 #include "modules/visionos_xr/visionos_xr_interface.h"
 #endif
+#import "platform/visionos/godot_app_delegate_service_visionos.h"
+#include "main/main.h"
+#include "servers/display/display_server.h"
 
 #import <CompositorServices/CompositorServices.h>
 
-extern void apple_embedded_finish();
-
 #if defined(MODULE_VISIONOS_XR_ENABLED)
+
+static const useconds_t paused_poll_interval_microseconds = 50000;
+static const useconds_t world_tracking_poll_interval_microseconds = 10000;
 
 @implementation GDTCompositorServicesRenderer {
 	cp_layer_renderer_t _layer_renderer;
-	cp_layer_renderer_capabilities_t _layer_renderer_capabilities;
+	float _minimum_near_plane_distance;
+}
+
+- (instancetype)initWithLayerRenderer:(cp_layer_renderer_t)layer_renderer
+			 minimumNearPlaneDistance:(float)minimum_near_plane_distance {
+	self = [super init];
+	if (self) {
+		_layer_renderer = layer_renderer;
+		_minimum_near_plane_distance = minimum_near_plane_distance;
+	}
+	return self;
 }
 
 - (instancetype)initWithLayerRenderer:(cp_layer_renderer_t)layer_renderer
 						 capabilities:(cp_layer_renderer_capabilities_t)capabilities {
-	self = [super init];
-	if (self) {
-		_layer_renderer = layer_renderer;
-		_layer_renderer_capabilities = capabilities;
-	}
-	return self;
+	return [self initWithLayerRenderer:layer_renderer
+			  minimumNearPlaneDistance:cp_layer_renderer_capabilities_supported_minimum_near_plane_distance(capabilities)];
 }
 
 // On visionOS Compositor Services mode (used by the visionOS XR module),
@@ -67,7 +75,14 @@ extern void apple_embedded_finish();
 - (void)updateXRInterface {
 	Ref<VisionOSXRInterface> visionos_xr_interface = VisionOSXRInterface::find_interface();
 	if (visionos_xr_interface.is_valid()) {
-		visionos_xr_interface->update_layer_renderer(_layer_renderer, _layer_renderer_capabilities);
+		visionos_xr_interface->update_layer_renderer(_layer_renderer, _minimum_near_plane_distance);
+	}
+}
+
+- (void)detachFromXRInterface {
+	Ref<VisionOSXRInterface> visionos_xr_interface = VisionOSXRInterface::find_interface();
+	if (visionos_xr_interface.is_valid()) {
+		visionos_xr_interface->release_layer_renderer(_layer_renderer);
 	}
 }
 
@@ -77,43 +92,52 @@ extern void apple_embedded_finish();
 	if (visionos_xr_interface.is_valid()) {
 		visionos_xr_interface->emit_signal_enum(VisionOSXRInterface::VISIONOS_XR_SIGNAL_SESSION_STARTED);
 	}
-	while (true) {
+
+	while (!self.stopRequested) {
 		cp_layer_renderer_state state = cp_layer_renderer_get_state(_layer_renderer);
+
 		if (state == cp_layer_renderer_state_invalidated) {
 			if (visionos_xr_interface.is_valid()) {
 				visionos_xr_interface->emit_signal_enum(VisionOSXRInterface::VISIONOS_XR_SIGNAL_SESSION_INVALIDATED);
 			}
-			// Exit render loop and wait for a new layer renderer
-			return;
-		} else if (state == cp_layer_renderer_state_paused) {
+			break;
+		}
+
+		if (state == cp_layer_renderer_state_paused) {
 			if (previous_state == cp_layer_renderer_state_running && visionos_xr_interface.is_valid()) {
 				visionos_xr_interface->emit_signal_enum(VisionOSXRInterface::VISIONOS_XR_SIGNAL_SESSION_PAUSED);
 			}
 			previous_state = state;
-			cp_layer_renderer_wait_until_running(_layer_renderer);
+			usleep(paused_poll_interval_microseconds);
 			continue;
-		} else {
-			@autoreleasepool {
-				if (previous_state == cp_layer_renderer_state_paused && visionos_xr_interface.is_valid()) {
-					visionos_xr_interface->emit_signal_enum(VisionOSXRInterface::VISIONOS_XR_SIGNAL_SESSION_RESUMED);
-				}
-				[self renderFrame];
-			}
+		}
+
+		if (previous_state == cp_layer_renderer_state_paused && visionos_xr_interface.is_valid()) {
+			visionos_xr_interface->emit_signal_enum(VisionOSXRInterface::VISIONOS_XR_SIGNAL_SESSION_RESUMED);
+		}
+		previous_state = state;
+
+		if (visionos_xr_interface.is_valid() && visionos_xr_interface->is_world_tracking_starting()) {
+			usleep(world_tracking_poll_interval_microseconds);
+			continue;
+		}
+
+		@autoreleasepool {
+			[self renderFrame];
 		}
 	}
 }
 
 - (void)renderFrame {
 	safeDispatchSyncToMain(^{
-		if (!OS_AppleEmbedded::get_singleton()) {
+		if (self.stopRequested || !OS::get_singleton()) {
 			return;
 		}
-		// Check state again after possible thread hop
-		cp_layer_renderer_state state = cp_layer_renderer_get_state(_layer_renderer);
-		if (state != cp_layer_renderer_state_running) {
+		if (cp_layer_renderer_get_state(self->_layer_renderer) != cp_layer_renderer_state_running) {
 			return;
 		}
-		OS_AppleEmbedded::get_singleton()->iterate();
+		DisplayServer::get_singleton()->process_events();
+		Main::iteration();
 	});
 }
 
@@ -131,12 +155,19 @@ extern void apple_embedded_finish();
 @implementation GDTCompositorServicesRenderer
 
 - (instancetype)initWithLayerRenderer:(cp_layer_renderer_t)layer_renderer
+			 minimumNearPlaneDistance:(float)minimum_near_plane_distance {
+	return [super init];
+}
+
+- (instancetype)initWithLayerRenderer:(cp_layer_renderer_t)layer_renderer
 						 capabilities:(cp_layer_renderer_capabilities_t)capabilities {
-	self = [super init];
-	return self;
+	return [super init];
 }
 
 - (void)updateXRInterface {
+}
+
+- (void)detachFromXRInterface {
 }
 
 - (void)startRenderLoop {

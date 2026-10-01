@@ -97,6 +97,8 @@
 #import "macos_quartz_core_spi.h"
 #endif
 
+#include "drivers/apple/rendering_native_surface_apple.h"
+
 #include <AppKit/AppKit.h>
 #import <Carbon/Carbon.h>
 #import <Cocoa/Cocoa.h>
@@ -184,26 +186,13 @@ DisplayServerEnums::WindowID DisplayServerMacOS::_create_window(DisplayServerEnu
 		}
 
 #if defined(RD_ENABLED)
+		Ref<RenderingNativeSurfaceApple> apple_surface;
+		if (rendering_driver == "vulkan" || rendering_driver == "metal") {
+			apple_surface = RenderingNativeSurfaceApple::create((__bridge void *)layer);
+		}
+
 		if (rendering_context) {
-			union {
-#ifdef VULKAN_ENABLED
-				RenderingContextDriverVulkanMacOS::WindowPlatformData vulkan;
-#endif
-#ifdef METAL_ENABLED
-				RenderingContextDriverMetal::WindowPlatformData metal;
-#endif
-			} wpd;
-#ifdef VULKAN_ENABLED
-			if (rendering_driver == "vulkan") {
-				wpd.vulkan.layer_ptr = (CAMetalLayer *const *)&layer;
-			}
-#endif
-#ifdef METAL_ENABLED
-			if (rendering_driver == "metal") {
-				wpd.metal.layer = (__bridge CA::MetalLayer *)layer;
-			}
-#endif
-			Error err = rendering_context->window_create(window_id_counter, &wpd);
+			Error err = rendering_context->window_create(window_id_counter, apple_surface);
 
 			if (err != OK) {
 				AccessibilityServer::get_singleton()->window_destroy(id);

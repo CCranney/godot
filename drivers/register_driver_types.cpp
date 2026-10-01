@@ -38,12 +38,22 @@
 #include "drivers/accesskit/accessibility_server_accesskit.h"
 #endif
 
+#ifdef __APPLE__
+#include "drivers/apple/rendering_native_surface_apple.h"
+#include "drivers/apple/rendering_native_surface_compositor_services.h"
+#endif
+
+
 static Ref<ImageLoaderPNG> image_loader_png;
 static Ref<ResourceSaverPNG> resource_saver_png;
 
 void register_core_driver_types() {
 #ifdef ACCESSKIT_ENABLED
 	AccessibilityServerAccessKit::register_create_func();
+#endif
+#ifdef __APPLE__
+    GDREGISTER_ABSTRACT_CLASS(RenderingNativeSurfaceApple);
+	GDREGISTER_ABSTRACT_CLASS(RenderingNativeSurfaceCompositorServices);
 #endif
 
 	image_loader_png.instantiate();

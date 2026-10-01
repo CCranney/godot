@@ -2936,6 +2936,8 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 
 	message_queue = memnew(MessageQueue);
 
+	register_core_server_types();
+
 #if defined(STEAMAPI_ENABLED)
 	if (editor || project_manager) {
 		steam_tracker = memnew(SteamTracker);

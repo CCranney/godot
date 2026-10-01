@@ -59,6 +59,7 @@
 #if defined(METAL_ENABLED)
 #import "drivers/metal/rendering_context_driver_metal.h"
 #endif
+#include "drivers/apple/rendering_native_surface_apple.h"
 #endif // RD_ENABLED
 
 // Keep Quartz after rendering includes, as it includes system GL.h
@@ -154,25 +155,12 @@ DisplayServerMacOSEmbedded::DisplayServerMacOSEmbedded(const String &p_rendering
 		layer = [CAMetalLayer new];
 		layer.anchorPoint = CGPointMake(0, 1);
 
-		union {
-#ifdef VULKAN_ENABLED
-			RenderingContextDriverVulkanMacOS::WindowPlatformData vulkan;
-#endif
-#ifdef METAL_ENABLED
-			RenderingContextDriverMetal::WindowPlatformData metal;
-#endif
-		} wpd;
-#ifdef VULKAN_ENABLED
-		if (rendering_driver == "vulkan") {
-			wpd.vulkan.layer_ptr = (CAMetalLayer *const *)&layer;
-		}
-#endif
-#ifdef METAL_ENABLED
+		Ref<RenderingNativeSurfaceApple> apple_surface;
 		if (rendering_driver == "metal") {
-			wpd.metal.layer = (__bridge CA::MetalLayer *)layer;
+			apple_surface = RenderingNativeSurfaceApple::create((__bridge void *)layer);
 		}
-#endif
-		Error err = rendering_context->window_create(window_id_counter, &wpd);
+
+		Error err = rendering_context->window_create(window_id_counter, apple_surface);
 		ERR_FAIL_COND_MSG(err != OK, vformat("Can't create a %s context", rendering_driver));
 
 		Size2i render_size = _source_to_render_size(p_resolution);

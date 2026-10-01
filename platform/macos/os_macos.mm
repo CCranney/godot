@@ -55,6 +55,10 @@
 #include "drivers/sdl/joypad_sdl.h"
 #endif
 
+#ifdef LIBGODOT_ENABLED
+#include "servers/display/display_server_library.h"
+#endif
+
 #include <dlfcn.h>
 #include <libproc.h>
 #import <mach-o/dyld.h>
@@ -1061,6 +1065,9 @@ OS_MacOS::OS_MacOS(const char *p_execpath, int p_argc, char **p_argv) {
 #endif
 
 	DisplayServerMacOS::register_macos_driver();
+#ifdef LIBGODOT_ENABLED
+	DisplayServerLibrary::register_library_driver();
+#endif
 }
 
 // MARK: - OS_MacOS_NSApp
