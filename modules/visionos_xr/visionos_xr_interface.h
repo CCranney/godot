@@ -93,7 +93,6 @@ private:
 		bool enabled = false;
 
 		cp_layer_renderer_t layer_renderer = nullptr;
-		cp_layer_renderer_capabilities_t layer_renderer_capabilities = nullptr;
 
 		ar_world_tracking_provider_t world_tracking_provider = nullptr;
 
@@ -118,6 +117,10 @@ private:
 	CFTimeInterval get_trackable_anchor_time();
 
 	void update_from_authorizations(ar_authorization_results_t);
+
+	void _adopt_app_delegate_layer_renderer();
+	bool _is_world_tracking_stopped() const;
+	void _restart_world_tracking();
 
 	// Hand tracking
 	VisionOSHandTracking hands;
@@ -160,6 +163,9 @@ private:
 		RD::Texture current_depth_texture;
 		RID current_depth_texture_id;
 		RID current_rasterization_rate_map_id;
+		void *standalone_present_queue = nullptr;
+
+		void _present_on_standalone_command_buffer();
 
 		// Cached render target size, set in pre_render() on the render thread
 		// and read from the game thread via get_render_target_size().
@@ -216,6 +222,7 @@ private:
 		RID get_color_texture();
 		RID get_depth_texture();
 		RID get_vrs_texture();
+		void discard_previous_session_frame();
 	} rt;
 
 	static void _bind_methods();
@@ -243,6 +250,7 @@ public:
 	virtual bool is_initialized() const override;
 	virtual bool initialize() override;
 	virtual void uninitialize() override;
+	bool is_world_tracking_starting() const;
 
 	// Running the ARKit session.
 	// Note that we need to re-run it when the privacy authorizations changed
@@ -253,7 +261,8 @@ public:
 
 	// The LayerRenderer and Capabilities are polled from the app delegate when initializing the VisionOSXRInterface,
 	// but they need to be updated when the app backgrounds and foregrounds because they are recreated by visionOS
-	void update_layer_renderer(cp_layer_renderer_t p_layer_renderer, cp_layer_renderer_capabilities_t p_layer_renderer_capabilities);
+	void update_layer_renderer(cp_layer_renderer_t p_layer_renderer, float p_minimum_supported_near_plane);
+	void release_layer_renderer(cp_layer_renderer_t p_layer_renderer);
 
 	virtual Dictionary get_system_info() override;
 	virtual VRSTextureFormat get_vrs_texture_format() override;

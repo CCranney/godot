@@ -40,10 +40,14 @@
 #include "core/os/os.h"
 #include "core/profiling/profiling.h"
 #import "drivers/apple/os_log_logger.h"
+#ifndef LIBGODOT_ENABLED
 #import "drivers/apple_embedded/display_server_apple_embedded.h"
 #import "drivers/apple_embedded/godot_app_delegate_service_apple_embedded.h"
 #import "drivers/apple_embedded/godot_view_apple_embedded.h"
 #import "drivers/apple_embedded/godot_view_controller.h"
+#else
+#include "servers/display/display_server_library.h"
+#endif
 #ifdef SDL_ENABLED
 #include "drivers/sdl/joypad_sdl.h"
 #endif
@@ -149,6 +153,10 @@ OS_AppleEmbedded::OS_AppleEmbedded() {
 	apple_init_callbacks = nullptr;
 	apple_embedded_platform_init_callbacks_count = 0;
 	apple_embedded_platform_init_callbacks_capacity = 0;
+
+#ifdef LIBGODOT_ENABLED
+    DisplayServerLibrary::register_library_driver();
+#endif
 
 	main_loop = nullptr;
 
@@ -802,9 +810,11 @@ void OS_AppleEmbedded::on_focus_out() {
 	if (is_focused) {
 		is_focused = false;
 
+#ifndef LIBGODOT_ENABLED
 		if (DisplayServerAppleEmbedded::get_singleton()) {
 			DisplayServerAppleEmbedded::get_singleton()->send_window_event(DisplayServerEnums::WINDOW_EVENT_FOCUS_OUT);
 		}
+#endif
 
 		if (AccessibilityServer::get_singleton()) {
 			AccessibilityServer::get_singleton()->set_window_focused(DisplayServerEnums::MAIN_WINDOW_ID, false);
@@ -814,7 +824,9 @@ void OS_AppleEmbedded::on_focus_out() {
 			OS::get_singleton()->get_main_loop()->notification(MainLoop::NOTIFICATION_APPLICATION_FOCUS_OUT);
 		}
 
+#ifndef LIBGODOT_ENABLED
 		[GDTAppDelegateService.viewController.godotView stopRendering];
+#endif
 
 		audio_driver_stop();
 	}
@@ -824,9 +836,11 @@ void OS_AppleEmbedded::on_focus_in() {
 	if (!is_focused) {
 		is_focused = true;
 
+#ifndef LIBGODOT_ENABLED
 		if (DisplayServerAppleEmbedded::get_singleton()) {
 			DisplayServerAppleEmbedded::get_singleton()->send_window_event(DisplayServerEnums::WINDOW_EVENT_FOCUS_IN);
 		}
+#endif
 
 		if (AccessibilityServer::get_singleton()) {
 			AccessibilityServer::get_singleton()->set_window_focused(DisplayServerEnums::MAIN_WINDOW_ID, true);
@@ -836,7 +850,9 @@ void OS_AppleEmbedded::on_focus_in() {
 			OS::get_singleton()->get_main_loop()->notification(MainLoop::NOTIFICATION_APPLICATION_FOCUS_IN);
 		}
 
+#ifndef LIBGODOT_ENABLED
 		[GDTAppDelegateService.viewController.godotView startRendering];
+#endif
 
 		audio_driver_start();
 	}

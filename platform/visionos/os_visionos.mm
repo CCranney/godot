@@ -30,7 +30,9 @@
 
 #import "os_visionos.h"
 
+#ifndef LIBGODOT_ENABLED
 #import "display_server_visionos.h"
+#endif
 
 #ifdef VISIONOS_ENABLED
 
@@ -40,7 +42,9 @@ OS_VisionOS *OS_VisionOS::get_singleton() {
 
 OS_VisionOS::OS_VisionOS() :
 		OS_AppleEmbedded() {
+#ifndef LIBGODOT_ENABLED
 	DisplayServerVisionOS::register_visionos_driver();
+#endif
 }
 
 OS_VisionOS::~OS_VisionOS() {}
@@ -48,5 +52,11 @@ OS_VisionOS::~OS_VisionOS() {}
 String OS_VisionOS::get_name() const {
 	return "visionOS";
 }
+
+#ifdef LIBGODOT_ENABLED
+OS_AppleEmbedded *create_apple_embedded_os() {
+	return new OS_VisionOS();
+}
+#endif
 
 #endif // VISIONOS_ENABLED

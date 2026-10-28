@@ -39,6 +39,7 @@
 #include "core/variant/callable.h"
 #include "core/variant/typed_array.h"
 #include "servers/display/display_server_enums.h"
+#include "servers/rendering/rendering_native_surface.h"
 
 class NativeMenu;
 class Texture2D;
@@ -376,6 +377,8 @@ public:
 	virtual DisplayServerEnums::WindowID create_sub_window(DisplayServerEnums::WindowMode p_mode, DisplayServerEnums::VSyncMode p_vsync_mode, uint32_t p_flags, const Rect2i &p_rect = Rect2i(), bool p_exclusive = false, DisplayServerEnums::WindowID p_transient_parent = DisplayServerEnums::INVALID_WINDOW_ID);
 	virtual void show_window(DisplayServerEnums::WindowID p_id);
 	virtual void delete_sub_window(DisplayServerEnums::WindowID p_id);
+
+	virtual DisplayServerEnums::WindowID create_native_window(const Ref<RenderingNativeSurface> &p_native_surface, DisplayServerEnums::WindowMode p_mode, uint32_t p_flags);
 
 	virtual DisplayServerEnums::WindowID window_get_active_popup() const { return DisplayServerEnums::INVALID_WINDOW_ID; }
 	virtual void window_set_popup_safe_rect(DisplayServerEnums::WindowID p_window, const Rect2i &p_rect) {}

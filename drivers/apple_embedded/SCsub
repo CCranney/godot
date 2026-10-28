@@ -3,7 +3,7 @@ from misc.utility.scons_hints import *
 
 from SCons.Script import Glob
 
-from platform_methods import setup_swift_builder
+from library_type_sources import select_sources_for_library_type, setup_swift_builder_for_executables
 
 Import("env")
 
@@ -19,7 +19,7 @@ current_path = Dir(".").abspath
 bridging_header_filename = "bridging_header_apple_embedded.h"
 swift_files = Glob("*.swift")
 swift_file_names = list(map(lambda f: f.name, swift_files))
-setup_swift_builder(
+setup_swift_builder_for_executables(
     env_apple_embedded, apple_platform, sdk_path, current_path, bridging_header_filename, swift_file_names
 )
 
@@ -33,4 +33,23 @@ env_apple_embedded.Prepend(CPPPATH=["#thirdparty/metal-cpp"])
 # Driver source files.
 # Note: ".swift" files are compiled separately, as a whole module, using `swiftc`.
 # Only compiling ".mm" files here.
-env_apple_embedded.add_source_files(env_apple_embedded.drivers_sources, "*.mm")
+mm_file_names = [f.name for f in Glob("*.mm")]
+executable_only_mm_names = {
+    "display_server_apple_embedded.mm",
+    "godot_app_delegate_service_apple_embedded.mm",
+    "godot_keyboard_input_view.mm",
+    "godot_renderer.mm",
+    "godot_view_apple_embedded.mm",
+    "godot_view_controller.mm",
+    "godot_view_renderer.mm",
+}
+library_only_mm_names = {
+    "libgodot_apple_embedded.mm",
+}
+mm_file_names = select_sources_for_library_type(
+    mm_file_names,
+    env["library_type"],
+    executable_only=executable_only_mm_names,
+    library_only=library_only_mm_names,
+)
+env_apple_embedded.add_source_files(env_apple_embedded.drivers_sources, mm_file_names)

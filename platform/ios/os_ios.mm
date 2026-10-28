@@ -30,7 +30,9 @@
 
 #import "os_ios.h"
 
+#ifndef LIBGODOT_ENABLED
 #import "display_server_ios.h"
+#endif
 
 #ifdef IOS_ENABLED
 
@@ -40,7 +42,9 @@ OS_IOS *OS_IOS::get_singleton() {
 
 OS_IOS::OS_IOS() :
 		OS_AppleEmbedded() {
+#ifndef LIBGODOT_ENABLED
 	DisplayServerIOS::register_ios_driver();
+#endif
 }
 
 OS_IOS::~OS_IOS() {}
@@ -48,5 +52,11 @@ OS_IOS::~OS_IOS() {}
 String OS_IOS::get_name() const {
 	return "iOS";
 }
+
+#ifdef LIBGODOT_ENABLED
+OS_AppleEmbedded *create_apple_embedded_os() {
+	return new OS_IOS();
+}
+#endif
 
 #endif // IOS_ENABLED

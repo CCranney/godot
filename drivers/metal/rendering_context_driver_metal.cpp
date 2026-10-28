@@ -29,6 +29,7 @@
 /**************************************************************************/
 
 #include "rendering_context_driver_metal.h"
+#include "drivers/apple/rendering_native_surface_apple.h"
 
 #include "core/os/os.h"
 #include "core/templates/sort_array.h"
@@ -58,7 +59,8 @@ __attribute__((constructor)) static void InitializeLogging(void) {
 	LOG_INTERVALS = os_log_create("org.godotengine.godot.metal", "events");
 }
 
-RenderingContextDriverMetal::RenderingContextDriverMetal() {
+RenderingContextDriverMetal::RenderingContextDriverMetal(MTL::Device *p_device) :
+		metal_device(p_device) {
 }
 
 RenderingContextDriverMetal::~RenderingContextDriverMetal() {
@@ -69,17 +71,19 @@ Error RenderingContextDriverMetal::initialize() {
 		capture_available = true;
 	}
 
+	if (metal_device == nullptr) {
 #if TARGET_OS_VISION && defined(MODULE_VISIONOS_XR_ENABLED)
-	// If visionOS XR module is not enabled, only windowed mode available
-	RenderModeVisionOS::Mode render_mode = RenderModeVisionOS::get_mode();
-	if (render_mode == RenderModeVisionOS::COMPOSITOR_SERVICES) {
-		metal_device = (MTL::Device *)RenderModeVisionOS::get_compositor_services_device();
-	} else if (render_mode == RenderModeVisionOS::WINDOWED) {
-		metal_device = MTL::CreateSystemDefaultDevice();
-	}
+		RenderModeVisionOS::Mode render_mode = RenderModeVisionOS::get_mode();
+		if (render_mode == RenderModeVisionOS::COMPOSITOR_SERVICES) {
+			metal_device = (MTL::Device *)RenderModeVisionOS::get_compositor_services_device();
+		} else if (render_mode == RenderModeVisionOS::WINDOWED) {
+			metal_device = MTL::CreateSystemDefaultDevice();
+		}
 #else
-	metal_device = MTL::CreateSystemDefaultDevice();
+		metal_device = MTL::CreateSystemDefaultDevice();
 #endif
+	}
+	ERR_FAIL_NULL_V_MSG(metal_device, ERR_CANT_CREATE, "No Metal device is available.");
 
 #if TARGET_OS_OSX
 	if (__builtin_available(macOS 13.3, *)) {
@@ -484,31 +488,25 @@ public:
 };
 #endif
 
-RenderingContextDriver::SurfaceID RenderingContextDriverMetal::surface_create(const void *p_platform_data) {
-	const WindowPlatformData *wpd = (const WindowPlatformData *)(p_platform_data);
-
-	Surface *surface = nullptr;
-#if TARGET_OS_VISION
-#if defined(MODULE_VISIONOS_XR_ENABLED)
+RenderingContextDriver::SurfaceID RenderingContextDriverMetal::surface_create(Ref<RenderingNativeSurface> p_native_surface) {
+#if TARGET_OS_VISION && defined(MODULE_VISIONOS_XR_ENABLED)
 	RenderModeVisionOS::Mode render_mode = RenderModeVisionOS::get_mode();
 	if (render_mode == RenderModeVisionOS::COMPOSITOR_SERVICES) {
-		surface = memnew(SurfaceCompositorServices(metal_device));
-	} else if (render_mode == RenderModeVisionOS::WINDOWED) {
-		surface = memnew(SurfaceLayer(wpd->layer, metal_device));
+		return SurfaceID(memnew(SurfaceCompositorServices(metal_device)));
 	}
-#else
-	// If visionOS XR module is not enabled, only windowed mode available
-	surface = memnew(SurfaceLayer(wpd->layer, metal_device));
-#endif
-#else
-	if (String v = OS::get_singleton()->get_environment("GODOT_MTL_OFF_SCREEN"); v == U"1") {
-		surface = memnew(SurfaceOffscreen(wpd->layer, metal_device));
-	} else {
-		surface = memnew(SurfaceLayer(wpd->layer, metal_device));
-	}
+	ERR_FAIL_COND_V_MSG(render_mode != RenderModeVisionOS::WINDOWED, SurfaceID(), "Unknown visionOS render mode.");
 #endif
 
-	return SurfaceID(surface);
+	Ref<RenderingNativeSurfaceApple> apple_native_surface = Object::cast_to<RenderingNativeSurfaceApple>(*p_native_surface);
+	ERR_FAIL_COND_V_MSG(apple_native_surface.is_null(), SurfaceID(), "Outside Compositor Services mode, the Metal driver needs a RenderingNativeSurfaceApple.");
+	CA::MetalLayer *metal_layer = (CA::MetalLayer *)(void *)apple_native_surface->get_layer();
+
+#if !TARGET_OS_VISION
+	if (OS::get_singleton()->get_environment("GODOT_MTL_OFF_SCREEN") == U"1") {
+		return SurfaceID(memnew(SurfaceOffscreen(metal_layer, metal_device)));
+	}
+#endif
+	return SurfaceID(memnew(SurfaceLayer(metal_layer, metal_device)));
 }
 
 void RenderingContextDriverMetal::surface_set_size(SurfaceID p_surface, uint32_t p_width, uint32_t p_height) {

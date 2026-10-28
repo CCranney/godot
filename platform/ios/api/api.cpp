@@ -33,11 +33,15 @@
 #if defined(IOS_ENABLED)
 
 void register_ios_api() {
+#ifndef LIBGODOT_ENABLED
 	godot_apple_embedded_plugins_initialize();
+#endif
 }
 
 void unregister_ios_api() {
+#ifndef LIBGODOT_ENABLED
 	godot_apple_embedded_plugins_deinitialize();
+#endif
 }
 
 #else

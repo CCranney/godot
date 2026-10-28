@@ -32,7 +32,11 @@
 
 #import "render_mode_visionos.h"
 
+#ifdef LIBGODOT_ENABLED
+#import <Foundation/Foundation.h>
+#else
 #import "drivers/apple_embedded/godot_app_delegate_service_apple_embedded.h"
+#endif
 
 #import <CompositorServices/CompositorServices.h>
 
@@ -53,7 +57,11 @@ typedef NS_ENUM(NSInteger, GDTVisibility) {
 	GDTVisibilityHidden
 };
 
+#ifdef LIBGODOT_ENABLED
+@interface GDTAppDelegateServiceVisionOS : NSObject
+#else
 @interface GDTAppDelegateServiceVisionOS : GDTAppDelegateService
+#endif
 
 @property(class, nonatomic, assign) GDTRenderMode renderMode;
 @property(class, nonatomic, weak, nullable) cp_layer_renderer_t layerRenderer;

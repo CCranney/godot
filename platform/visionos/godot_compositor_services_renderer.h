@@ -40,15 +40,21 @@
 
 @interface GDTCompositorServicesRenderer : GDTRenderer
 
+@property(atomic, assign) BOOL stopRequested;
+
+- (instancetype)initWithLayerRenderer:(cp_layer_renderer_t)layer_renderer
+			 minimumNearPlaneDistance:(float)minimum_near_plane_distance;
 - (instancetype)initWithLayerRenderer:(cp_layer_renderer_t)layer_renderer
 						 capabilities:(cp_layer_renderer_capabilities_t)capabilities;
 
 - (void)updateXRInterface;
-
+- (void)detachFromXRInterface;
 - (void)startRenderLoop;
 - (void)renderFrame;
 - (void)worldRecentered;
 
+#ifndef LIBGODOT_ENABLED
 - (void)onSpatialEvent:(SpatialEventObjC *)event;
+#endif
 
 @end

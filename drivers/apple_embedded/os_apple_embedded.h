@@ -160,5 +160,8 @@ public:
 		}
 	}
 };
+#ifdef LIBGODOT_ENABLED
+	OS_AppleEmbedded *create_apple_embedded_os();
+#endif
 
 #endif // APPLE_EMBEDDED_ENABLED
