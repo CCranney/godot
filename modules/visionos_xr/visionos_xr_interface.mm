@@ -147,8 +147,13 @@ bool VisionOSXRInterface::initialize() {
 	ERR_FAIL_NULL_V(xr_server, false);
 
 	// Checking features
+#ifdef LIBGODOT_ENABLED
+	// libgodot hosts attach Compositor Services layer renderers on demand through LibgodotCompositorServicesController.
+	cs.enabled = true;
+#else
 	GDTRenderMode app_delegate_render_mode = GDTAppDelegateServiceVisionOS.renderMode;
 	cs.enabled = (app_delegate_render_mode == GDTRenderModeCompositorServices);
+#endif
 	hands.enabled = GLOBAL_GET("xr/visionos/enable_hand_tracking");
 	controllers.enabled = GLOBAL_GET("xr/visionos/enable_controller_tracking");
 
@@ -177,7 +182,9 @@ bool VisionOSXRInterface::initialize() {
 		rendering_server->call_on_render_thread(callable_mp(&rt, &RenderThread::initialize));
 		rendering_server->call_on_render_thread(callable_mp(&rt, &RenderThread::set_world_tracking_provider).bind((uint64_t)(__bridge void *)cs.world_tracking_provider));
 
+#ifndef LIBGODOT_ENABLED
 		_adopt_app_delegate_layer_renderer();
+#endif
 
 		rendering_server->call_on_render_thread(callable_mp(&rt, &RenderThread::prepare_screen));
 
@@ -357,7 +364,17 @@ void VisionOSXRInterface::_restart_world_tracking() {
 void VisionOSXRInterface::release_layer_renderer(cp_layer_renderer_t p_layer_renderer) {
 	if (cs.layer_renderer == p_layer_renderer) {
 		cs.layer_renderer = nullptr;
+		cs.current_frame = nullptr;
+		cs.current_timing = nullptr;
 	}
+}
+
+void VisionOSXRInterface::set_compositor_frame_requested(bool p_requested) {
+	cs.frame_requested = p_requested;
+}
+
+bool VisionOSXRInterface::_should_query_compositor_frame() const {
+	return cs.enabled && cs.frame_requested && cs.layer_renderer != nullptr;
 }
 
 bool VisionOSXRInterface::is_world_tracking_starting() const {
@@ -394,6 +411,7 @@ bool VisionOSXRInterface::set_play_area_mode(XRInterface::PlayAreaMode p_mode) {
 }
 
 float VisionOSXRInterface::get_current_render_quality() {
+	ERR_FAIL_NULL_V_MSG(cs.layer_renderer, 0.0, "No immersive session is running, so there is no render quality to report.");
 	return cp_layer_renderer_get_render_quality(cs.layer_renderer);
 }
 
@@ -401,6 +419,7 @@ void VisionOSXRInterface::set_current_render_quality(float p_render_quality) {
 	ERR_FAIL_COND_MSG(!GDTAppDelegateServiceVisionOS.isDynamicRenderQualityEnabled, "Attempting to set current render quality but Dynamic Render Quality has not been enabled in Project Settings.");
 	float maxRenderQuality = GDTAppDelegateServiceVisionOS.maxRenderQuality;
 	ERR_FAIL_COND_MSG(p_render_quality > GDTAppDelegateServiceVisionOS.maxRenderQuality, vformat("Attempting to set a current render quality higher than the Max Render Quality configured in Project Settings (%f).", maxRenderQuality));
+	ERR_FAIL_NULL_MSG(cs.layer_renderer, "No immersive session is running, so the render quality cannot be set.");
 	cp_layer_renderer_set_render_quality(cs.layer_renderer, p_render_quality);
 }
 
@@ -611,7 +630,7 @@ CFTimeInterval VisionOSXRInterface::get_trackable_anchor_time() {
 	// Computing the time to use for pose prediction
 	CFTimeInterval trackable_anchor_time = 0;
 
-	if (cs.enabled) {
+	if (cs.enabled && cs.current_timing != nullptr) {
 		// If CompositorServices is enabled, use its presentation time for pose prediction
 		trackable_anchor_time = cp_time_to_cf_time_interval(cp_frame_timing_get_trackable_anchor_time(cs.current_timing));
 	} else {
@@ -640,7 +659,9 @@ void VisionOSXRInterface::process() {
 		return;
 	}
 
-	if (cs.enabled) {
+	cs.current_frame = nullptr;
+	cs.current_timing = nullptr;
+	if (_should_query_compositor_frame()) {
 		cs.current_frame = cp_layer_renderer_query_next_frame(cs.layer_renderer);
 
 		ERR_FAIL_NULL_MSG(cs.current_frame, "Layer renderer unexpectedly returned a nil frame, the layer renderer has probably been invalidated and it hasn't been updated to a new one.");
@@ -965,7 +986,7 @@ void VisionOSXRInterface::RenderThread::end_frame_update() {
 void VisionOSXRInterface::RenderThread::pre_render() {
 	ERR_NOT_ON_RENDER_THREAD;
 
-	if (!initialized) {
+	if (!initialized || current_frame == nullptr) {
 		return;
 	}
 
@@ -1089,7 +1110,9 @@ void VisionOSXRInterface::RenderThread::encode_present(MTL3::MDCommandBuffer *p_
 		return;
 	}
 
-	ERR_FAIL_NULL_MSG(current_drawable, "Current drawable is nil, process() has probably not been called.");
+	if (current_drawable == nullptr) {
+		return;
+	}
 	void *engine_command_buffer = p_cmd_buffer ? (void *)p_cmd_buffer->get_command_buffer() : nullptr;
 	if (engine_command_buffer == nullptr) {
 		WARN_PRINT_ONCE("The engine had no command buffer to present with; presenting on a standalone command buffer.");
@@ -1103,17 +1126,20 @@ void VisionOSXRInterface::RenderThread::encode_present(MTL3::MDCommandBuffer *p_
 void VisionOSXRInterface::RenderThread::end_frame() {
 	ERR_NOT_ON_RENDER_THREAD;
 
-	if (!initialized) {
+	if (!initialized || current_frame == nullptr) {
 		return;
 	}
 
-	ERR_FAIL_NULL_MSG(current_frame, "Current frame is nil, process() has probably not been called.");
 	if (current_drawable != nullptr) {
 		WARN_PRINT_ONCE("The frame ended without presenting its drawable; presenting it before ending submission.");
 		_present_on_standalone_command_buffer();
 	}
 	cp_frame_end_submission(current_frame);
 	current_frame = nullptr;
+}
+
+bool VisionOSXRInterface::RenderThread::has_current_drawable() const {
+	return initialized && current_drawable != nullptr;
 }
 
 void VisionOSXRInterface::RenderThread::discard_previous_session_frame() {

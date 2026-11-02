@@ -94,6 +94,10 @@ private:
 
 		cp_layer_renderer_t layer_renderer = nullptr;
 
+		// Set by the Compositor Services render loop around the engine iterations it drives. Iterations driven
+		// by anything else (such as a libgodot host's display link for its windows) must not consume frames.
+		bool frame_requested = false;
+
 		ar_world_tracking_provider_t world_tracking_provider = nullptr;
 
 		cp_frame_t current_frame = nullptr;
@@ -119,6 +123,7 @@ private:
 	void update_from_authorizations(ar_authorization_results_t);
 
 	void _adopt_app_delegate_layer_renderer();
+	bool _should_query_compositor_frame() const;
 	bool _is_world_tracking_stopped() const;
 	void _restart_world_tracking();
 
@@ -223,6 +228,7 @@ private:
 		RID get_depth_texture();
 		RID get_vrs_texture();
 		void discard_previous_session_frame();
+		bool has_current_drawable() const;
 	} rt;
 
 	static void _bind_methods();
@@ -263,6 +269,7 @@ public:
 	// but they need to be updated when the app backgrounds and foregrounds because they are recreated by visionOS
 	void update_layer_renderer(cp_layer_renderer_t p_layer_renderer, float p_minimum_supported_near_plane);
 	void release_layer_renderer(cp_layer_renderer_t p_layer_renderer);
+	void set_compositor_frame_requested(bool p_requested);
 
 	virtual Dictionary get_system_info() override;
 	virtual VRSTextureFormat get_vrs_texture_format() override;
@@ -309,6 +316,9 @@ public:
 	}
 	virtual void pre_render() override {
 		rt.pre_render();
+	}
+	virtual bool pre_draw_viewport(RID p_render_target) override {
+		return rt.has_current_drawable();
 	}
 	virtual Vector<RenderingServerTypes::BlitToScreen> post_draw_viewport(RID p_render_target, const Rect2 &p_screen_rect) override {
 		return rt.post_draw_viewport(p_render_target, p_screen_rect);

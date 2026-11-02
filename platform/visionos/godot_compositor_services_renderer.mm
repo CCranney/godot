@@ -69,6 +69,12 @@ inline Transform3D convert(simd_double4x4 p_v) {
 static const useconds_t paused_poll_interval_microseconds = 50000;
 static const useconds_t world_tracking_poll_interval_microseconds = 10000;
 
+@interface GDTCompositorServicesRenderer ()
+
+@property(atomic, assign, readwrite) BOOL isPresentingFrames;
+
+@end
+
 @implementation GDTCompositorServicesRenderer {
 	cp_layer_renderer_t _layer_renderer;
 	float _minimum_near_plane_distance;
@@ -132,6 +138,7 @@ static const useconds_t world_tracking_poll_interval_microseconds = 10000;
 				visionos_xr_interface->emit_signal_enum(VisionOSXRInterface::VISIONOS_XR_SIGNAL_SESSION_PAUSED);
 			}
 			previous_state = state;
+			self.isPresentingFrames = NO;
 			usleep(paused_poll_interval_microseconds);
 			continue;
 		}
@@ -142,14 +149,17 @@ static const useconds_t world_tracking_poll_interval_microseconds = 10000;
 		previous_state = state;
 
 		if (visionos_xr_interface.is_valid() && visionos_xr_interface->is_world_tracking_starting()) {
+			self.isPresentingFrames = NO;
 			usleep(world_tracking_poll_interval_microseconds);
 			continue;
 		}
 
+		self.isPresentingFrames = YES;
 		@autoreleasepool {
 			[self renderFrame];
 		}
 	}
+	self.isPresentingFrames = NO;
 }
 
 - (void)renderFrame {
@@ -160,8 +170,15 @@ static const useconds_t world_tracking_poll_interval_microseconds = 10000;
 		if (cp_layer_renderer_get_state(self->_layer_renderer) != cp_layer_renderer_state_running) {
 			return;
 		}
+		Ref<VisionOSXRInterface> visionos_xr_interface = VisionOSXRInterface::find_interface();
+		if (visionos_xr_interface.is_valid()) {
+			visionos_xr_interface->set_compositor_frame_requested(true);
+		}
 		DisplayServer::get_singleton()->process_events();
 		Main::iteration();
+		if (visionos_xr_interface.is_valid()) {
+			visionos_xr_interface->set_compositor_frame_requested(false);
+		}
 	});
 }
 
@@ -205,6 +222,10 @@ static const useconds_t world_tracking_poll_interval_microseconds = 10000;
 #else
 
 @implementation GDTCompositorServicesRenderer
+
+- (BOOL)isPresentingFrames {
+	return NO;
+}
 
 - (instancetype)initWithLayerRenderer:(cp_layer_renderer_t)layer_renderer
 			 minimumNearPlaneDistance:(float)minimum_near_plane_distance {

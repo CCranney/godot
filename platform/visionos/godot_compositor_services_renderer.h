@@ -41,6 +41,9 @@
 @interface GDTCompositorServicesRenderer : GDTRenderer
 
 @property(atomic, assign) BOOL stopRequested;
+// YES while the render loop is iterating the engine at the layer renderer's frame rate. Hosts that also drive
+// iterations for their windows (e.g. from a display link) yield to the render loop while this is YES.
+@property(atomic, assign, readonly) BOOL isPresentingFrames;
 
 - (instancetype)initWithLayerRenderer:(cp_layer_renderer_t)layer_renderer
 			 minimumNearPlaneDistance:(float)minimum_near_plane_distance;

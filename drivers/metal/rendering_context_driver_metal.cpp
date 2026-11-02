@@ -30,6 +30,7 @@
 
 #include "rendering_context_driver_metal.h"
 #include "drivers/apple/rendering_native_surface_apple.h"
+#include "drivers/apple/rendering_native_surface_compositor_services.h"
 
 #include "core/os/os.h"
 #include "core/templates/sort_array.h"
@@ -473,7 +474,9 @@ public:
 
 	void present(MTL3::MDCommandBuffer *p_cmd_buffer) override final {
 		Ref<VisionOSXRInterface> visionos_xr_interface = VisionOSXRInterface::find_interface();
-		ERR_FAIL_COND_MSG(!visionos_xr_interface.is_valid(), "visionOS VR interface not found or invalid");
+		if (visionos_xr_interface.is_null() || !visionos_xr_interface->is_initialized()) {
+			return;
+		}
 		visionos_xr_interface->encode_present(p_cmd_buffer);
 	}
 
@@ -488,17 +491,24 @@ public:
 };
 #endif
 
+#if TARGET_OS_VISION && defined(MODULE_VISIONOS_XR_ENABLED)
+static bool presents_through_compositor_services(const Ref<RenderingNativeSurface> &p_native_surface) {
+	if (Object::cast_to<RenderingNativeSurfaceCompositorServices>(*p_native_surface) != nullptr) {
+		return true;
+	}
+	return RenderModeVisionOS::get_mode() == RenderModeVisionOS::COMPOSITOR_SERVICES;
+}
+#endif
+
 RenderingContextDriver::SurfaceID RenderingContextDriverMetal::surface_create(Ref<RenderingNativeSurface> p_native_surface) {
 #if TARGET_OS_VISION && defined(MODULE_VISIONOS_XR_ENABLED)
-	RenderModeVisionOS::Mode render_mode = RenderModeVisionOS::get_mode();
-	if (render_mode == RenderModeVisionOS::COMPOSITOR_SERVICES) {
+	if (presents_through_compositor_services(p_native_surface)) {
 		return SurfaceID(memnew(SurfaceCompositorServices(metal_device)));
 	}
-	ERR_FAIL_COND_V_MSG(render_mode != RenderModeVisionOS::WINDOWED, SurfaceID(), "Unknown visionOS render mode.");
 #endif
 
 	Ref<RenderingNativeSurfaceApple> apple_native_surface = Object::cast_to<RenderingNativeSurfaceApple>(*p_native_surface);
-	ERR_FAIL_COND_V_MSG(apple_native_surface.is_null(), SurfaceID(), "Outside Compositor Services mode, the Metal driver needs a RenderingNativeSurfaceApple.");
+	ERR_FAIL_COND_V_MSG(apple_native_surface.is_null(), SurfaceID(), "The Metal driver needs a RenderingNativeSurfaceApple for windows that are not presented by Compositor Services.");
 	CA::MetalLayer *metal_layer = (CA::MetalLayer *)(void *)apple_native_surface->get_layer();
 
 #if !TARGET_OS_VISION

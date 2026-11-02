@@ -32,28 +32,15 @@
 
 #include "servers/rendering/rendering_native_surface.h"
 
-namespace MTL {
-class Device;
-}
-
+// The surface of a window whose frames are presented by an immersive Compositor Services session
+// instead of a CAMetalLayer. It is created and owned by LibgodotCompositorServicesController and is
+// deliberately not registered with ClassDB, so hosts never construct it directly.
 class RenderingNativeSurfaceCompositorServices : public RenderingNativeSurface {
 	GDCLASS(RenderingNativeSurfaceCompositorServices, RenderingNativeSurface);
 
-	MTL::Device *metal_device = nullptr;
-	void *active_session = nullptr;
-
 protected:
-	static void _bind_methods();
+	static void _bind_methods() {}
 
 public:
-	static Ref<RenderingNativeSurfaceCompositorServices> create_api(uint64_t p_layer_renderer);
-
 	RenderingContextDriver *create_rendering_context(const String &p_driver_name) override;
-
-	void begin_session(uint64_t p_layer_renderer, float p_minimum_near_plane_distance);
-	void run_render_loop();
-	void end_session();
-	void world_recentered();
-
-	~RenderingNativeSurfaceCompositorServices();
 };
