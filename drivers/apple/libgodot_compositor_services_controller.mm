@@ -54,6 +54,16 @@ void LibgodotCompositorServicesController::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("world_recentered"), &LibgodotCompositorServicesController::world_recentered);
 	ClassDB::bind_method(D_METHOD("is_session_active"), &LibgodotCompositorServicesController::is_session_active);
 	ClassDB::bind_method(D_METHOD("is_presenting_frames"), &LibgodotCompositorServicesController::is_presenting_frames);
+	ClassDB::bind_method(D_METHOD("submit_spatial_event", "phase", "chirality", "hand_pose", "has_selection_ray", "selection_ray_origin", "selection_ray_direction"), &LibgodotCompositorServicesController::submit_spatial_event);
+
+	BIND_ENUM_CONSTANT(SPATIAL_EVENT_PHASE_UNKNOWN);
+	BIND_ENUM_CONSTANT(SPATIAL_EVENT_PHASE_ACTIVE);
+	BIND_ENUM_CONSTANT(SPATIAL_EVENT_PHASE_CANCELLED);
+	BIND_ENUM_CONSTANT(SPATIAL_EVENT_PHASE_ENDED);
+
+	BIND_ENUM_CONSTANT(SPATIAL_EVENT_CHIRALITY_NONE);
+	BIND_ENUM_CONSTANT(SPATIAL_EVENT_CHIRALITY_LEFT);
+	BIND_ENUM_CONSTANT(SPATIAL_EVENT_CHIRALITY_RIGHT);
 }
 
 Ref<RenderingNativeSurface> LibgodotCompositorServicesController::get_main_window_surface() const {
@@ -144,6 +154,23 @@ bool LibgodotCompositorServicesController::is_presenting_frames() const {
 	return session_at(active_session).isPresentingFrames;
 }
 
+static_assert((int)LibgodotCompositorServicesController::SPATIAL_EVENT_PHASE_ACTIVE == (int)VisionOSSpatialEvent::Phase::active);
+static_assert((int)LibgodotCompositorServicesController::SPATIAL_EVENT_PHASE_ENDED == (int)VisionOSSpatialEvent::Phase::ended);
+static_assert((int)LibgodotCompositorServicesController::SPATIAL_EVENT_CHIRALITY_RIGHT == (int)VisionOSSpatialEvent::Chirality::right);
+
+void LibgodotCompositorServicesController::submit_spatial_event(SpatialEventPhase p_phase, SpatialEventChirality p_chirality, const Transform3D &p_hand_pose, bool p_has_selection_ray, const Vector3 &p_selection_ray_origin, const Vector3 &p_selection_ray_direction) {
+	ERR_FAIL_COND_MSG(![NSThread isMainThread], "submit_spatial_event() must be called on the main thread.");
+	if (active_session == nullptr) {
+		return;
+	}
+	[session_at(active_session) submitSpatialEventWithPhase:(VisionOSSpatialEvent::Phase)p_phase
+												  chirality:(VisionOSSpatialEvent::Chirality)p_chirality
+												   handPose:p_hand_pose
+											hasSelectionRay:p_has_selection_ray
+										 selectionRayOrigin:p_selection_ray_origin
+									  selectionRayDirection:p_selection_ray_direction];
+}
+
 LibgodotCompositorServicesController::~LibgodotCompositorServicesController() {
 	ERR_FAIL_COND_MSG(active_session != nullptr, "The controller was released while an immersive session was still running.");
 }
@@ -171,6 +198,9 @@ void LibgodotCompositorServicesController::world_recentered() {
 
 bool LibgodotCompositorServicesController::is_presenting_frames() const {
 	return false;
+}
+
+void LibgodotCompositorServicesController::submit_spatial_event(SpatialEventPhase, SpatialEventChirality, const Transform3D &, bool, const Vector3 &, const Vector3 &) {
 }
 
 LibgodotCompositorServicesController::~LibgodotCompositorServicesController() {

@@ -33,6 +33,7 @@
 #import "drivers/apple_embedded/godot_renderer.h"
 
 #import "modules/visionos_xr/visionos_definitions.h"
+#import "modules/visionos_xr/visionos_spatial_events.h"
 
 #import <CompositorServices/CompositorServices.h>
 
@@ -58,6 +59,17 @@
 
 #ifndef LIBGODOT_ENABLED
 - (void)onSpatialEvent:(SpatialEventObjC *)event;
+#endif
+
+#ifndef __swift__
+// The single entry point for gaze-and-pinch input, shared by -onSpatialEvent: (Godot's own visionOS app) and
+// LibgodotCompositorServicesController (libgodot hosts, which receive SwiftUI spatial events themselves).
+- (void)submitSpatialEventWithPhase:(VisionOSSpatialEvent::Phase)phase
+						  chirality:(VisionOSSpatialEvent::Chirality)chirality
+						   handPose:(const Transform3D &)hand_pose
+					hasSelectionRay:(BOOL)has_selection_ray
+				 selectionRayOrigin:(const Vector3 &)selection_ray_origin
+			  selectionRayDirection:(const Vector3 &)selection_ray_direction;
 #endif
 
 @end

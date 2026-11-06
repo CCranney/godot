@@ -30,6 +30,9 @@
 
 #pragma once
 
+#include "core/math/transform_3d.h"
+#include "core/math/vector3.h"
+#include "core/object/class_db.h"
 #include "core/object/ref_counted.h"
 #include "servers/rendering/rendering_native_surface.h"
 
@@ -40,6 +43,22 @@
 class LibgodotCompositorServicesController : public RefCounted {
 	GDCLASS(LibgodotCompositorServicesController, RefCounted);
 
+public:
+	// Mirror SwiftUI's SpatialEventCollection.Event, which the host receives from LayerRenderer.onSpatialEvent.
+	enum SpatialEventPhase {
+		SPATIAL_EVENT_PHASE_UNKNOWN,
+		SPATIAL_EVENT_PHASE_ACTIVE,
+		SPATIAL_EVENT_PHASE_CANCELLED,
+		SPATIAL_EVENT_PHASE_ENDED,
+	};
+
+	enum SpatialEventChirality {
+		SPATIAL_EVENT_CHIRALITY_NONE,
+		SPATIAL_EVENT_CHIRALITY_LEFT,
+		SPATIAL_EVENT_CHIRALITY_RIGHT,
+	};
+
+private:
 	Ref<RenderingNativeSurface> main_window_surface;
 	void *active_session = nullptr;
 
@@ -56,8 +75,15 @@ public:
 	void end_session();
 	void world_recentered();
 
+	// Forwards a gaze-and-pinch event to the visionOS XR interface, which drives the "/user/eyes_ext" selection ray
+	// tracker and the left_hand/right_hand trigger_click input. Call it on the main thread for each event.
+	void submit_spatial_event(SpatialEventPhase p_phase, SpatialEventChirality p_chirality, const Transform3D &p_hand_pose, bool p_has_selection_ray, const Vector3 &p_selection_ray_origin, const Vector3 &p_selection_ray_direction);
+
 	bool is_session_active() const;
 	bool is_presenting_frames() const;
 
 	~LibgodotCompositorServicesController();
 };
+
+VARIANT_ENUM_CAST(LibgodotCompositorServicesController::SpatialEventPhase);
+VARIANT_ENUM_CAST(LibgodotCompositorServicesController::SpatialEventChirality);
