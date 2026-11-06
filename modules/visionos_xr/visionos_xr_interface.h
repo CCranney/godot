@@ -37,6 +37,7 @@
 #include "visionos_hand_tracking.h"
 #include "visionos_spatial_events.h"
 
+#include "servers/display/display_server_enums.h"
 #include "servers/xr/xr_controller_tracker.h"
 
 #ifdef __OBJC__
@@ -148,6 +149,7 @@ private:
 		Mutex mutex;
 
 		float minimum_supported_near_plane = 0.0;
+		DisplayServerEnums::WindowID compositor_window_id = DisplayServerEnums::MAIN_WINDOW_ID;
 
 		// RenderThread must query the device anchor again,
 		// because ar_device_anchor_t objects cannot be safely shared between threads
@@ -190,6 +192,7 @@ private:
 		void initialize();
 		void uninitialize();
 		void prepare_screen();
+		void set_compositor_window(DisplayServerEnums::WindowID p_window_id);
 
 		void set_minimum_supported_near_plane(float p_minimum_supported_near_plane);
 		// p_current_frame should be an cp_frame_t pointer casted to uint64_t
@@ -267,6 +270,8 @@ public:
 	void update_layer_renderer(cp_layer_renderer_t p_layer_renderer, float p_minimum_supported_near_plane);
 	void release_layer_renderer(cp_layer_renderer_t p_layer_renderer);
 	void set_compositor_frame_requested(bool p_requested);
+	void set_compositor_window(DisplayServerEnums::WindowID p_window_id);
+	bool is_compositor_frame_requested() const;
 
 	virtual Dictionary get_system_info() override;
 	virtual VRSTextureFormat get_vrs_texture_format() override;

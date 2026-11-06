@@ -34,6 +34,7 @@
 #include "core/math/vector3.h"
 #include "core/object/class_db.h"
 #include "core/object/ref_counted.h"
+#include "servers/display/display_server_enums.h"
 #include "servers/rendering/rendering_native_surface.h"
 
 class LibgodotCompositorServicesController : public RefCounted {
@@ -56,6 +57,7 @@ public:
 private:
 	Ref<RenderingNativeSurface> main_window_surface;
 	void *active_session = nullptr;
+	DisplayServerEnums::WindowID immersive_window_id = DisplayServerEnums::INVALID_WINDOW_ID;
 
 protected:
 	static void _bind_methods();
@@ -64,6 +66,7 @@ public:
 	static Ref<LibgodotCompositorServicesController> create();
 
 	Ref<RenderingNativeSurface> get_main_window_surface() const;
+	int64_t create_immersive_window();
 
 	void begin_session(uint64_t p_layer_renderer, float p_minimum_near_plane_distance);
 	void run_render_loop();

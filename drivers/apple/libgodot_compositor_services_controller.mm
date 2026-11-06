@@ -33,6 +33,7 @@
 #import "rendering_native_surface_compositor_services.h"
 
 #include "modules/modules_enabled.gen.h"
+#include "servers/display/display_server.h"
 
 #if defined(VISIONOS_ENABLED) && defined(MODULE_VISIONOS_XR_ENABLED)
 #define COMPOSITOR_SERVICES_AVAILABLE
@@ -47,6 +48,7 @@
 void LibgodotCompositorServicesController::_bind_methods() {
 	ClassDB::bind_static_method(get_class_static(), D_METHOD("create"), &LibgodotCompositorServicesController::create);
 	ClassDB::bind_method(D_METHOD("get_main_window_surface"), &LibgodotCompositorServicesController::get_main_window_surface);
+	ClassDB::bind_method(D_METHOD("create_immersive_window"), &LibgodotCompositorServicesController::create_immersive_window);
 	ClassDB::bind_method(D_METHOD("begin_session", "layer_renderer", "minimum_near_plane_distance"), &LibgodotCompositorServicesController::begin_session);
 	ClassDB::bind_method(D_METHOD("run_render_loop"), &LibgodotCompositorServicesController::run_render_loop);
 	ClassDB::bind_method(D_METHOD("end_session"), &LibgodotCompositorServicesController::end_session);
@@ -86,6 +88,26 @@ Ref<LibgodotCompositorServicesController> LibgodotCompositorServicesController::
 	controller.instantiate();
 	controller->main_window_surface = surface;
 	return controller;
+}
+
+int64_t LibgodotCompositorServicesController::create_immersive_window() {
+	ERR_FAIL_COND_V_MSG(![NSThread isMainThread], DisplayServerEnums::INVALID_WINDOW_ID, "create_immersive_window() must be called on the main thread.");
+	if (immersive_window_id != DisplayServerEnums::INVALID_WINDOW_ID) {
+		return immersive_window_id;
+	}
+
+	DisplayServer *display_server = DisplayServer::get_singleton();
+	ERR_FAIL_NULL_V_MSG(display_server, DisplayServerEnums::INVALID_WINDOW_ID, "Start the engine with the library display driver before creating the immersive window.");
+	Ref<VisionOSXRInterface> visionos_xr_interface = VisionOSXRInterface::find_interface();
+	ERR_FAIL_COND_V(visionos_xr_interface.is_null(), DisplayServerEnums::INVALID_WINDOW_ID);
+
+	Ref<RenderingNativeSurfaceCompositorServices> surface;
+	surface.instantiate();
+	immersive_window_id = display_server->create_native_window(surface, DisplayServerEnums::WINDOW_MODE_FULLSCREEN, 0);
+	ERR_FAIL_COND_V(immersive_window_id == DisplayServerEnums::INVALID_WINDOW_ID, DisplayServerEnums::INVALID_WINDOW_ID);
+
+	visionos_xr_interface->set_compositor_window(immersive_window_id);
+	return immersive_window_id;
 }
 
 void LibgodotCompositorServicesController::begin_session(uint64_t p_layer_renderer, float p_minimum_near_plane_distance) {
@@ -167,6 +189,10 @@ LibgodotCompositorServicesController::~LibgodotCompositorServicesController() {
 
 Ref<LibgodotCompositorServicesController> LibgodotCompositorServicesController::create() {
 	ERR_FAIL_V_MSG(Ref<LibgodotCompositorServicesController>(), "LibgodotCompositorServicesController requires a visionOS build with the visionos_xr module.");
+}
+
+int64_t LibgodotCompositorServicesController::create_immersive_window() {
+	return DisplayServerEnums::INVALID_WINDOW_ID;
 }
 
 void LibgodotCompositorServicesController::begin_session(uint64_t, float) {

@@ -36,19 +36,27 @@
 
 #include "core/object/class_db.h"
 
+#ifdef TOOLS_ENABLED
+#include "editor/immersive_editor_plugin.h"
+#endif
+
 Ref<VisionOSXRInterface> visionos_xr;
 
 void initialize_visionos_xr_module(ModuleInitializationLevel p_level) {
-	if (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) {
-		return;
-	}
+	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
+		GDREGISTER_CLASS(VisionOSXRInterface);
 
-	GDREGISTER_CLASS(VisionOSXRInterface);
-
-	if (XRServer::get_singleton()) {
-		visionos_xr.instantiate();
-		XRServer::get_singleton()->add_interface(visionos_xr);
+		if (XRServer::get_singleton()) {
+			visionos_xr.instantiate();
+			XRServer::get_singleton()->add_interface(visionos_xr);
+		}
 	}
+#ifdef TOOLS_ENABLED
+	if (p_level == MODULE_INITIALIZATION_LEVEL_EDITOR) {
+		GDREGISTER_INTERNAL_CLASS(EditorXRCamera3D);
+		EditorPlugins::add_by_type<ImmersiveEditorPlugin>();
+	}
+#endif
 }
 
 void uninitialize_visionos_xr_module(ModuleInitializationLevel p_level) {

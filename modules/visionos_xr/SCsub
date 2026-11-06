@@ -6,3 +6,8 @@ Import("env_modules")
 
 env_visionos_xr = env_modules.Clone()
 env_visionos_xr.add_source_files(env.modules_sources, "*.mm")
+
+Export("env_visionos_xr")
+
+if env.editor_build:
+    SConscript("editor/SCsub")

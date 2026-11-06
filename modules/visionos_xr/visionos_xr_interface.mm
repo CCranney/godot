@@ -302,7 +302,12 @@ void VisionOSXRInterface::RenderThread::prepare_screen() {
 	ERR_NOT_ON_RENDER_THREAD;
 
 	// Trigger the swap-chain resize so the format is initialized; must happen outside any submission.
-	rendering_device->screen_prepare_for_drawing(DisplayServerEnums::MAIN_WINDOW_ID);
+	rendering_device->screen_prepare_for_drawing(compositor_window_id);
+}
+
+void VisionOSXRInterface::RenderThread::set_compositor_window(DisplayServerEnums::WindowID p_window_id) {
+	ERR_NOT_ON_RENDER_THREAD;
+	compositor_window_id = p_window_id;
 }
 
 void VisionOSXRInterface::RenderThread::uninitialize() {
@@ -366,6 +371,14 @@ void VisionOSXRInterface::release_layer_renderer(cp_layer_renderer_t p_layer_ren
 
 void VisionOSXRInterface::set_compositor_frame_requested(bool p_requested) {
 	cs.frame_requested = p_requested;
+}
+
+bool VisionOSXRInterface::is_compositor_frame_requested() const {
+	return cs.frame_requested;
+}
+
+void VisionOSXRInterface::set_compositor_window(DisplayServerEnums::WindowID p_window_id) {
+	RenderingServer::get_singleton()->call_on_render_thread(callable_mp(&rt, &RenderThread::set_compositor_window).bind(p_window_id));
 }
 
 bool VisionOSXRInterface::is_world_tracking_starting() const {
@@ -1039,7 +1052,7 @@ Vector<RenderingServerTypes::BlitToScreen> VisionOSXRInterface::RenderThread::po
 
 	// We're overriding the color and depth textures, no need for screen blits, return empty BlitToScreen vector
 	// However, we need to acquire the dummy frame buffer
-	RD::get_singleton()->screen_prepare_for_drawing(DisplayServerEnums::MAIN_WINDOW_ID);
+	RD::get_singleton()->screen_prepare_for_drawing(compositor_window_id);
 	return Vector<RenderingServerTypes::BlitToScreen>();
 }
 
