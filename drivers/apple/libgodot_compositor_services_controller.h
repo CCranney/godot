@@ -36,15 +36,10 @@
 #include "core/object/ref_counted.h"
 #include "servers/rendering/rendering_native_surface.h"
 
-// Lets a libgodot host hand the Compositor Services layer renderers of its immersive spaces to Godot.
-// The controller exists for the whole lifetime of the engine: its main window surface is given to
-// DisplayServerLibrary before the engine starts, and immersive sessions come and go on top of it while
-// host windows keep rendering through their own RenderingNativeSurfaceApple surfaces.
 class LibgodotCompositorServicesController : public RefCounted {
 	GDCLASS(LibgodotCompositorServicesController, RefCounted);
 
 public:
-	// Mirror SwiftUI's SpatialEventCollection.Event, which the host receives from LayerRenderer.onSpatialEvent.
 	enum SpatialEventPhase {
 		SPATIAL_EVENT_PHASE_UNKNOWN,
 		SPATIAL_EVENT_PHASE_ACTIVE,
@@ -75,11 +70,8 @@ public:
 	void end_session();
 	void world_recentered();
 
-	// Forwards a gaze-and-pinch event to the visionOS XR interface, which drives the "/user/eyes_ext" selection ray
-	// tracker and the left_hand/right_hand trigger_click input. Call it on the main thread for each event.
 	void submit_spatial_event(SpatialEventPhase p_phase, SpatialEventChirality p_chirality, const Transform3D &p_hand_pose, bool p_has_selection_ray, const Vector3 &p_selection_ray_origin, const Vector3 &p_selection_ray_direction);
 
-	bool is_session_active() const;
 	bool is_presenting_frames() const;
 
 	~LibgodotCompositorServicesController();

@@ -94,8 +94,6 @@ private:
 
 		cp_layer_renderer_t layer_renderer = nullptr;
 
-		// Set by the Compositor Services render loop around the engine iterations it drives. Iterations driven
-		// by anything else (such as a libgodot host's display link for its windows) must not consume frames.
 		bool frame_requested = false;
 
 		ar_world_tracking_provider_t world_tracking_provider = nullptr;
@@ -123,7 +121,6 @@ private:
 	void update_from_authorizations(ar_authorization_results_t);
 
 	void _adopt_app_delegate_layer_renderer();
-	bool _should_query_compositor_frame() const;
 	bool _is_world_tracking_stopped() const;
 	void _restart_world_tracking();
 

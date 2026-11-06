@@ -51,8 +51,6 @@
 
 #if defined(MODULE_VISIONOS_XR_ENABLED)
 
-// Only -onSpatialEvent: uses these conversions, and it exists only in non-libgodot builds.
-#ifndef LIBGODOT_ENABLED
 namespace {
 
 inline Vector3 convert(simd_double3 p_v) {
@@ -68,16 +66,8 @@ inline Transform3D convert(simd_double4x4 p_v) {
 }
 
 } // namespace
-#endif
-
 static const useconds_t paused_poll_interval_microseconds = 50000;
 static const useconds_t world_tracking_poll_interval_microseconds = 10000;
-
-@interface GDTCompositorServicesRenderer ()
-
-@property(atomic, assign, readwrite) BOOL isPresentingFrames;
-
-@end
 
 @implementation GDTCompositorServicesRenderer {
 	cp_layer_renderer_t _layer_renderer;
@@ -195,50 +185,37 @@ static const useconds_t world_tracking_poll_interval_microseconds = 10000;
 
 #ifndef LIBGODOT_ENABLED
 - (void)onSpatialEvent:(SpatialEventObjC *)p_event {
-	// Convert from the ObjC/Swift type to Godot types.
-	static_assert((int)VisionOSSpatialEvent::Chirality::right == (int)ChiralityRight);
-	static_assert((int)VisionOSSpatialEvent::Phase::ended == (int)PhaseEnded);
-	[self submitSpatialEventWithPhase:(VisionOSSpatialEvent::Phase)p_event.phase
-							chirality:(VisionOSSpatialEvent::Chirality)p_event.chirality
-							 handPose:convert(p_event.handPose)
-					  hasSelectionRay:p_event.hasRay
-				   selectionRayOrigin:convert(p_event.rayOrigin)
-				selectionRayDirection:convert(p_event.rayDirection)];
+	Ref<VisionOSXRInterface> visionos_xr_interface = VisionOSXRInterface::find_interface();
+	if (visionos_xr_interface.is_valid()) {
+		VisionOSSpatialEvent event;
+
+		// Convert from the ObjC/Swift type to the C++ type.
+		{
+			// Ray
+			event.has_ray = p_event.hasRay;
+			if (p_event.hasRay) {
+				event.ray.set_look_at(convert(p_event.rayOrigin), convert(p_event.rayOrigin + p_event.rayDirection));
+			}
+			// Hand
+			static_assert((int)VisionOSSpatialEvent::Chirality::right == (int)ChiralityRight);
+			event.chirality = (VisionOSSpatialEvent::Chirality)p_event.chirality;
+			event.hand_pose = convert(p_event.handPose);
+			// Phase
+			static_assert((int)VisionOSSpatialEvent::Phase::ended == (int)PhaseEnded);
+			event.phase = (VisionOSSpatialEvent::Phase)p_event.phase;
+		}
+
+		// Send the event to the VisionOSXRInterface.
+		visionos_xr_interface->on_spatial_event(event);
+	}
 }
 #endif
-
-- (void)submitSpatialEventWithPhase:(VisionOSSpatialEvent::Phase)phase
-						  chirality:(VisionOSSpatialEvent::Chirality)chirality
-						   handPose:(const Transform3D &)hand_pose
-					hasSelectionRay:(BOOL)has_selection_ray
-				 selectionRayOrigin:(const Vector3 &)selection_ray_origin
-			  selectionRayDirection:(const Vector3 &)selection_ray_direction {
-	Ref<VisionOSXRInterface> visionos_xr_interface = VisionOSXRInterface::find_interface();
-	if (visionos_xr_interface.is_null()) {
-		return;
-	}
-
-	VisionOSSpatialEvent event;
-	event.phase = phase;
-	event.chirality = chirality;
-	event.hand_pose = hand_pose;
-	event.has_ray = has_selection_ray;
-	if (has_selection_ray) {
-		event.ray.set_look_at(selection_ray_origin, selection_ray_origin + selection_ray_direction);
-	}
-
-	visionos_xr_interface->on_spatial_event(event);
-}
 
 @end
 
 #else
 
 @implementation GDTCompositorServicesRenderer
-
-- (BOOL)isPresentingFrames {
-	return NO;
-}
 
 - (instancetype)initWithLayerRenderer:(cp_layer_renderer_t)layer_renderer
 			 minimumNearPlaneDistance:(float)minimum_near_plane_distance {
@@ -263,14 +240,6 @@ static const useconds_t world_tracking_poll_interval_microseconds = 10000;
 }
 
 - (void)worldRecentered {
-}
-
-- (void)submitSpatialEventWithPhase:(VisionOSSpatialEvent::Phase)phase
-						  chirality:(VisionOSSpatialEvent::Chirality)chirality
-						   handPose:(const Transform3D &)hand_pose
-					hasSelectionRay:(BOOL)has_selection_ray
-				 selectionRayOrigin:(const Vector3 &)selection_ray_origin
-			  selectionRayDirection:(const Vector3 &)selection_ray_direction {
 }
 
 @end

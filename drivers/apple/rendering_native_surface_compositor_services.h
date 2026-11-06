@@ -32,9 +32,6 @@
 
 #include "servers/rendering/rendering_native_surface.h"
 
-// The surface of a window whose frames are presented by an immersive Compositor Services session
-// instead of a CAMetalLayer. It is created and owned by LibgodotCompositorServicesController and is
-// deliberately not registered with ClassDB, so hosts never construct it directly.
 class RenderingNativeSurfaceCompositorServices : public RenderingNativeSurface {
 	GDCLASS(RenderingNativeSurfaceCompositorServices, RenderingNativeSurface);
 

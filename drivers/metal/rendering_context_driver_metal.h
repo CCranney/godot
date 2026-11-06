@@ -128,7 +128,7 @@ public:
 
 #pragma mark - Initialization
 
-	explicit RenderingContextDriverMetal(MTL::Device *p_device = nullptr);
+	RenderingContextDriverMetal();
 	~RenderingContextDriverMetal() override;
 };
 

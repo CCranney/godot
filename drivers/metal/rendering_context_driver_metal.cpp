@@ -60,8 +60,7 @@ __attribute__((constructor)) static void InitializeLogging(void) {
 	LOG_INTERVALS = os_log_create("org.godotengine.godot.metal", "events");
 }
 
-RenderingContextDriverMetal::RenderingContextDriverMetal(MTL::Device *p_device) :
-		metal_device(p_device) {
+RenderingContextDriverMetal::RenderingContextDriverMetal() {
 }
 
 RenderingContextDriverMetal::~RenderingContextDriverMetal() {
@@ -72,19 +71,17 @@ Error RenderingContextDriverMetal::initialize() {
 		capture_available = true;
 	}
 
-	if (metal_device == nullptr) {
 #if TARGET_OS_VISION && defined(MODULE_VISIONOS_XR_ENABLED)
-		RenderModeVisionOS::Mode render_mode = RenderModeVisionOS::get_mode();
-		if (render_mode == RenderModeVisionOS::COMPOSITOR_SERVICES) {
-			metal_device = (MTL::Device *)RenderModeVisionOS::get_compositor_services_device();
-		} else if (render_mode == RenderModeVisionOS::WINDOWED) {
-			metal_device = MTL::CreateSystemDefaultDevice();
-		}
-#else
+	// If visionOS XR module is not enabled, only windowed mode available
+	RenderModeVisionOS::Mode render_mode = RenderModeVisionOS::get_mode();
+	if (render_mode == RenderModeVisionOS::COMPOSITOR_SERVICES) {
+		metal_device = (MTL::Device *)RenderModeVisionOS::get_compositor_services_device();
+	} else if (render_mode == RenderModeVisionOS::WINDOWED) {
 		metal_device = MTL::CreateSystemDefaultDevice();
-#endif
 	}
-	ERR_FAIL_NULL_V_MSG(metal_device, ERR_CANT_CREATE, "No Metal device is available.");
+#else
+	metal_device = MTL::CreateSystemDefaultDevice();
+#endif
 
 #if TARGET_OS_OSX
 	if (__builtin_available(macOS 13.3, *)) {
@@ -491,18 +488,9 @@ public:
 };
 #endif
 
-#if TARGET_OS_VISION && defined(MODULE_VISIONOS_XR_ENABLED)
-static bool presents_through_compositor_services(const Ref<RenderingNativeSurface> &p_native_surface) {
-	if (Object::cast_to<RenderingNativeSurfaceCompositorServices>(*p_native_surface) != nullptr) {
-		return true;
-	}
-	return RenderModeVisionOS::get_mode() == RenderModeVisionOS::COMPOSITOR_SERVICES;
-}
-#endif
-
 RenderingContextDriver::SurfaceID RenderingContextDriverMetal::surface_create(Ref<RenderingNativeSurface> p_native_surface) {
 #if TARGET_OS_VISION && defined(MODULE_VISIONOS_XR_ENABLED)
-	if (presents_through_compositor_services(p_native_surface)) {
+	if (Object::cast_to<RenderingNativeSurfaceCompositorServices>(*p_native_surface) || RenderModeVisionOS::get_mode() == RenderModeVisionOS::COMPOSITOR_SERVICES) {
 		return SurfaceID(memnew(SurfaceCompositorServices(metal_device)));
 	}
 #endif

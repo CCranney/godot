@@ -33,7 +33,6 @@
 #import "drivers/apple_embedded/godot_renderer.h"
 
 #import "modules/visionos_xr/visionos_definitions.h"
-#import "modules/visionos_xr/visionos_spatial_events.h"
 
 #import <CompositorServices/CompositorServices.h>
 
@@ -42,9 +41,7 @@
 @interface GDTCompositorServicesRenderer : GDTRenderer
 
 @property(atomic, assign) BOOL stopRequested;
-// YES while the render loop is iterating the engine at the layer renderer's frame rate. Hosts that also drive
-// iterations for their windows (e.g. from a display link) yield to the render loop while this is YES.
-@property(atomic, assign, readonly) BOOL isPresentingFrames;
+@property(atomic, assign) BOOL isPresentingFrames;
 
 - (instancetype)initWithLayerRenderer:(cp_layer_renderer_t)layer_renderer
 			 minimumNearPlaneDistance:(float)minimum_near_plane_distance;
@@ -59,17 +56,6 @@
 
 #ifndef LIBGODOT_ENABLED
 - (void)onSpatialEvent:(SpatialEventObjC *)event;
-#endif
-
-#ifndef __swift__
-// The single entry point for gaze-and-pinch input, shared by -onSpatialEvent: (Godot's own visionOS app) and
-// LibgodotCompositorServicesController (libgodot hosts, which receive SwiftUI spatial events themselves).
-- (void)submitSpatialEventWithPhase:(VisionOSSpatialEvent::Phase)phase
-						  chirality:(VisionOSSpatialEvent::Chirality)chirality
-						   handPose:(const Transform3D &)hand_pose
-					hasSelectionRay:(BOOL)has_selection_ray
-				 selectionRayOrigin:(const Vector3 &)selection_ray_origin
-			  selectionRayDirection:(const Vector3 &)selection_ray_direction;
 #endif
 
 @end

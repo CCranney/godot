@@ -41,8 +41,7 @@
 #ifdef COMPOSITOR_SERVICES_AVAILABLE
 #import "platform/visionos/godot_compositor_services_renderer.h"
 
-#import <CompositorServices/CompositorServices.h>
-#import <Metal/Metal.h>
+#include "modules/visionos_xr/visionos_xr_interface.h"
 #endif
 
 void LibgodotCompositorServicesController::_bind_methods() {
@@ -52,7 +51,6 @@ void LibgodotCompositorServicesController::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("run_render_loop"), &LibgodotCompositorServicesController::run_render_loop);
 	ClassDB::bind_method(D_METHOD("end_session"), &LibgodotCompositorServicesController::end_session);
 	ClassDB::bind_method(D_METHOD("world_recentered"), &LibgodotCompositorServicesController::world_recentered);
-	ClassDB::bind_method(D_METHOD("is_session_active"), &LibgodotCompositorServicesController::is_session_active);
 	ClassDB::bind_method(D_METHOD("is_presenting_frames"), &LibgodotCompositorServicesController::is_presenting_frames);
 	ClassDB::bind_method(D_METHOD("submit_spatial_event", "phase", "chirality", "hand_pose", "has_selection_ray", "selection_ray_origin", "selection_ray_direction"), &LibgodotCompositorServicesController::submit_spatial_event);
 
@@ -70,10 +68,6 @@ Ref<RenderingNativeSurface> LibgodotCompositorServicesController::get_main_windo
 	return main_window_surface;
 }
 
-bool LibgodotCompositorServicesController::is_session_active() const {
-	return active_session != nullptr;
-}
-
 #ifdef COMPOSITOR_SERVICES_AVAILABLE
 
 static cp_layer_renderer_t layer_renderer_at(uint64_t p_address) {
@@ -82,14 +76,6 @@ static cp_layer_renderer_t layer_renderer_at(uint64_t p_address) {
 
 static GDTCompositorServicesRenderer *session_at(void *p_address) {
 	return (__bridge GDTCompositorServicesRenderer *)p_address;
-}
-
-static void warn_if_layer_renderer_uses_another_device(cp_layer_renderer_t p_layer_renderer) {
-	id<MTLDevice> layer_renderer_device = cp_layer_renderer_get_device(p_layer_renderer);
-	id<MTLDevice> engine_device = MTLCreateSystemDefaultDevice();
-	if (layer_renderer_device != engine_device) {
-		WARN_PRINT("The layer renderer's Metal device differs from the engine's system default device; its drawables may not be usable by the engine.");
-	}
 }
 
 Ref<LibgodotCompositorServicesController> LibgodotCompositorServicesController::create() {
@@ -107,10 +93,7 @@ void LibgodotCompositorServicesController::begin_session(uint64_t p_layer_render
 	ERR_FAIL_COND_MSG(active_session != nullptr, "An immersive session is already running on this controller.");
 	ERR_FAIL_COND(p_layer_renderer == 0);
 
-	cp_layer_renderer_t layer_renderer = layer_renderer_at(p_layer_renderer);
-	warn_if_layer_renderer_uses_another_device(layer_renderer);
-
-	GDTCompositorServicesRenderer *session = [[GDTCompositorServicesRenderer alloc] initWithLayerRenderer:layer_renderer
+	GDTCompositorServicesRenderer *session = [[GDTCompositorServicesRenderer alloc] initWithLayerRenderer:layer_renderer_at(p_layer_renderer)
 																				 minimumNearPlaneDistance:p_minimum_near_plane_distance];
 	[session updateXRInterface];
 	active_session = (void *)CFBridgingRetain(session);
@@ -160,15 +143,20 @@ static_assert((int)LibgodotCompositorServicesController::SPATIAL_EVENT_CHIRALITY
 
 void LibgodotCompositorServicesController::submit_spatial_event(SpatialEventPhase p_phase, SpatialEventChirality p_chirality, const Transform3D &p_hand_pose, bool p_has_selection_ray, const Vector3 &p_selection_ray_origin, const Vector3 &p_selection_ray_direction) {
 	ERR_FAIL_COND_MSG(![NSThread isMainThread], "submit_spatial_event() must be called on the main thread.");
-	if (active_session == nullptr) {
+	Ref<VisionOSXRInterface> visionos_xr_interface = VisionOSXRInterface::find_interface();
+	if (active_session == nullptr || visionos_xr_interface.is_null()) {
 		return;
 	}
-	[session_at(active_session) submitSpatialEventWithPhase:(VisionOSSpatialEvent::Phase)p_phase
-												  chirality:(VisionOSSpatialEvent::Chirality)p_chirality
-												   handPose:p_hand_pose
-											hasSelectionRay:p_has_selection_ray
-										 selectionRayOrigin:p_selection_ray_origin
-									  selectionRayDirection:p_selection_ray_direction];
+
+	VisionOSSpatialEvent event;
+	event.phase = (VisionOSSpatialEvent::Phase)p_phase;
+	event.chirality = (VisionOSSpatialEvent::Chirality)p_chirality;
+	event.hand_pose = p_hand_pose;
+	event.has_ray = p_has_selection_ray;
+	if (p_has_selection_ray) {
+		event.ray.set_look_at(p_selection_ray_origin, p_selection_ray_origin + p_selection_ray_direction);
+	}
+	visionos_xr_interface->on_spatial_event(event);
 }
 
 LibgodotCompositorServicesController::~LibgodotCompositorServicesController() {
@@ -177,14 +165,11 @@ LibgodotCompositorServicesController::~LibgodotCompositorServicesController() {
 
 #else
 
-static const char *compositor_services_unavailable_message = "LibgodotCompositorServicesController requires a visionOS build with the visionos_xr module.";
-
 Ref<LibgodotCompositorServicesController> LibgodotCompositorServicesController::create() {
-	ERR_FAIL_V_MSG(Ref<LibgodotCompositorServicesController>(), compositor_services_unavailable_message);
+	ERR_FAIL_V_MSG(Ref<LibgodotCompositorServicesController>(), "LibgodotCompositorServicesController requires a visionOS build with the visionos_xr module.");
 }
 
 void LibgodotCompositorServicesController::begin_session(uint64_t, float) {
-	ERR_FAIL_MSG(compositor_services_unavailable_message);
 }
 
 void LibgodotCompositorServicesController::run_render_loop() {
